@@ -1,103 +1,60 @@
-import { useState, useEffect } from "react";
-import StreamGrid from "./components/StreamGrid.jsx";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { io } from "socket.io-client";
+import StreamGrid from "./components/StreamGrid";
 
-function App() {
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const socket = io(BACKEND_URL);
+
+export default function App() {
   const [streams, setStreams] = useState([]);
-  const [urlInput, setUrlInput] = useState("");
+  const [url, setUrl] = useState("");
+
+  const fetchStreams = async () => {
+    const res = await axios.get(`${BACKEND_URL}/streams`);
+    setStreams(res.data);
+  };
+
+  const addStream = async () => {
+    if (!url.trim()) return;
+    await axios.post(`${BACKEND_URL}/streams`, { url });
+    setUrl("");
+    fetchStreams();
+  };
+
+  const deleteStream = async (id) => {
+    await axios.delete(`${BACKEND_URL}/streams/${id}`);
+    socket.emit("removeStream", id);
+    fetchStreams();
+  };
 
   useEffect(() => {
     fetchStreams();
   }, []);
 
-  const fetchStreams = async () => {
-    try {
-      const response = await fetch("http://localhost:5000/streams");
-      const data = await response.json();
-      setStreams(data);
-    } catch (error) {
-      console.error("Error fetching streams:", error);
-    }
-  };
-
-  const addStream = async (e) => {
-    e.preventDefault();
-    if (!urlInput.trim()) return;
-
-    try {
-      const response = await fetch("http://localhost:5000/streams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: urlInput }),
-      });
-
-      const newStream = await response.json();
-      setStreams([...streams, newStream]);
-      setUrlInput("");
-    } catch (error) {
-      console.error("Error adding stream:", error);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white shadow-sm py-4">
-        <div className="container mx-auto px-4">
-          <h1 className="text-2xl font-bold text-gray-800">
-            RTSP Stream Viewer
-          </h1>
-        </div>
-      </header>
+    <div className="p-4 max-w-7xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4 text-center">
+        📹 RTSP Stream Viewer
+      </h1>
 
-      <main className="flex-grow container mx-auto px-4 py-6">
-        <form
-          onSubmit={addStream}
-          className="mb-8 bg-white p-6 rounded-lg shadow max-w-4xl mx-auto"
+      <div className="flex gap-2 mb-6 justify-center">
+        <input
+          type="text"
+          className="p-2 rounded w-1/2 text-black"
+          placeholder="Enter RTSP URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+        <button
+          onClick={addStream}
+          className="bg-green-600 px-4 py-2 rounded hover:bg-green-700"
         >
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="rtsp-url"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Enter RTSP URL
-              </label>
-              <div className="flex gap-3">
-                <input
-                  id="rtsp-url"
-                  type="text"
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="e.g., rtsp://username:password@ip:port/stream"
-                  className="flex-grow px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Add Stream
-                </button>
-              </div>
-            </div>
+          ➕ Add Stream
+        </button>
+      </div>
 
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-sm text-blue-700">
-                <span className="font-medium">Example:</span>{" "}
-                rtsp://admin:admin123@49.248.155.178:555/cam/realmonitor?channel=1&subtype=0
-              </p>
-            </div>
-          </div>
-        </form>
-
-        <StreamGrid streams={streams} setStreams={setStreams} />
-      </main>
-
-      <footer className="bg-white py-4 mt-8 border-t">
-        <div className="container mx-auto px-4 text-center text-gray-500">
-          RTSP Stream Viewer © {new Date().getFullYear()}
-        </div>
-      </footer>
+      <StreamGrid streams={streams} socket={socket} onDelete={deleteStream} />
     </div>
   );
 }
-
-export default App;
