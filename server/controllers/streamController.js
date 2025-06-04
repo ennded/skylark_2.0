@@ -1,33 +1,38 @@
-import Stream from "../models/Stream.js";
+const Stream = require("../models/Stream");
 
-export const createStream = async (req, res) => {
+const addStream = async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
+
   try {
-    const { url } = req.body;
-    const stream = new Stream({ url });
-    await stream.save();
+    const stream = await Stream.create({
+      url,
+      createdAt: new Date(),
+      status: "active",
+    });
     res.status(201).json(stream);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create stream" });
   }
 };
 
-export const getStreams = async (req, res) => {
+const getStreams = async (req, res) => {
   try {
     const streams = await Stream.find();
     res.json(streams);
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch streams" });
   }
 };
 
-export const deleteStream = async (req, res) => {
+const deleteStream = async (req, res) => {
+  const { id } = req.params;
   try {
-    const stream = await Stream.findByIdAndDelete(req.params.id);
-    if (!stream) {
-      return res.status(404).json({ error: "Stream not found" });
-    }
+    await Stream.findByIdAndDelete(id);
     res.json({ message: "Stream deleted" });
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete stream" });
   }
 };
+
+module.exports = { addStream, getStreams, deleteStream };

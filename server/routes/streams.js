@@ -1,14 +1,13 @@
-import express from "express";
-import {
-  createStream,
+const express = require("express");
+const router = express.Router();
+const {
+  addStream,
   getStreams,
   deleteStream,
-} from "../controllers/streamController.js";
+} = require("../controllers/streamController");
 
-const router = express.Router();
-
-router.post("/", createStream);
+router.post("/", addStream);
 router.get("/", getStreams);
 router.delete("/:id", deleteStream);
 
-export default router;
+module.exports = router;

@@ -1,41 +1,47 @@
-import express from "express";
-import mongoose from "mongoose";
-import dotenv from "dotenv";
-import cors from "cors";
-import http from "http";
-import { Server } from "socket.io";
+// ✅ Let's start with the backend first
 
-import streamRoutes from "./routes/streams.js";
-import { initializeSocket } from "./sockets/streamSocket.js";
+// 🔹 Filename: /server/server.js
+// 🧾 Purpose: Main backend server entry point
+
+const express = require("express");
+const http = require("http");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const { Server } = require("socket.io");
+const dotenv = require("dotenv");
+const streamRoutes = require("./routes/streams");
+const streamSocket = require("./sockets/streamSocket");
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN,
-    methods: ["GET", "POST"],
+    origin: process.env.FRONTEND_ORIGIN,
+    methods: ["GET", "POST", "DELETE"],
   },
 });
 
-app.use(
-  cors({
-    origin: process.env.FRONTEND_ORIGIN,
-  })
-);
+// Middleware
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN }));
 app.use(express.json());
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
-
+// Routes
 app.use("/streams", streamRoutes);
 
-initializeSocket(io);
+// DB Connect
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.error("Mongo error", err));
+
+// Socket setup
+streamSocket(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

@@ -1,79 +1,50 @@
-import { spawn } from "child_process";
-import Stream from "../models/Stream.js";
+const { spawn } = require("child_process");
+const { PassThrough } = require("stream");
+const { encode } = require("base64-arraybuffer");
 
-const activeStreams = new Map();
+function startStreaming(url, socket, roomId) {
+  const ffmpeg = spawn("ffmpeg", [
+    "-rtsp_transport",
+    "tcp",
+    "-i",
+    url,
+    "-f",
+    "image2pipe",
+    "-qscale",
+    "5",
+    "-vf",
+    "fps=10",
+    "-update",
+    "1",
+    "-vcodec",
+    "mjpeg",
+    "-",
+  ]);
 
-const startFFmpegProcess = (streamId, rtspUrl, socket) => {
-  const ffmpeg = spawn(
-    "ffmpeg",
-    [
-      "-rtsp_transport",
-      "tcp",
-      "-i",
-      rtspUrl,
-      "-f",
-      "mjpeg",
-      "-q:v",
-      "2",
-      "-update",
-      "1",
-      "-",
-    ],
-    { stdio: ["ignore", "pipe", "ignore"] }
-  );
+  const stream = new PassThrough();
+  ffmpeg.stdout.pipe(stream);
 
-  ffmpeg.stdout.on("data", (data) => {
-    const frame = data.toString("base64");
-    socket.to(streamId).emit("frame", frame);
+  let frame = [];
+  stream.on("data", (chunk) => {
+    frame.push(chunk);
   });
 
-  ffmpeg.on("error", (error) => {
-    console.error(`FFmpeg error for ${streamId}:`, error);
-    socket.to(streamId).emit("stream-error", error.message);
-    Stream.findByIdAndUpdate(streamId, { status: "error" }).exec();
+  stream.on("end", () => {
+    const buffer = Buffer.concat(frame);
+    const base64Frame = buffer.toString("base64");
+    socket.to(roomId).emit("frame", base64Frame);
+    frame = [];
   });
 
-  ffmpeg.on("close", (code) => {
-    console.log(`FFmpeg process closed for ${streamId} with code ${code}`);
-    activeStreams.delete(streamId);
+  ffmpeg.stderr.on("data", (data) => {
+    console.error(`FFmpeg stderr: ${data}`);
   });
 
-  activeStreams.set(streamId, ffmpeg);
-};
+  ffmpeg.on("exit", () => {
+    console.log(`FFmpeg exited for ${url}`);
+  });
 
-export const getOrCreateStream = (streamId, rtspUrl, socket) => {
-  if (!activeStreams.has(streamId)) {
-    startFFmpegProcess(streamId, rtspUrl, socket);
-  }
-  return activeStreams.get(streamId);
-};
+  return ffmpeg;
+}
 
-export const pauseStream = (streamId) => {
-  const ffmpeg = activeStreams.get(streamId);
-  if (ffmpeg) {
-    ffmpeg.kill("SIGSTOP");
-    Stream.findByIdAndUpdate(streamId, { status: "paused" }).exec();
-  }
-};
-
-export const resumeStream = (streamId, rtspUrl, socket) => {
-  const ffmpeg = activeStreams.get(streamId);
-  if (ffmpeg) {
-    ffmpeg.kill("SIGCONT");
-  } else {
-    startFFmpegProcess(streamId, rtspUrl, socket);
-  }
-  Stream.findByIdAndUpdate(streamId, { status: "active" }).exec();
-};
-
-export const stopStream = (streamId) => {
-  const ffmpeg = activeStreams.get(streamId);
-  if (ffmpeg) {
-    ffmpeg.kill("SIGINT");
-    activeStreams.delete(streamId);
-  }
-};
-
-export const isStreamActive = (streamId) => {
-  return activeStreams.has(streamId);
-};
+module.exports = { startStreaming };

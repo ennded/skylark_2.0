@@ -1,51 +1,45 @@
-import {
-  getOrCreateStream,
-  pauseStream,
-  resumeStream,
-  stopStream,
-  isStreamActive,
-} from "../services/ffmpegStreamer.js";
-import Stream from "../models/Stream.js";
+const { startStreaming } = require("../services/ffmpegStreamer");
+const activeStreams = new Map();
 
-export const initializeSocket = (io) => {
+function streamSocket(io) {
   io.on("connection", (socket) => {
-    console.log(`Client connected: ${socket.id}`);
+    console.log("Client connected:", socket.id);
 
-    socket.on("join", async (streamId) => {
-      socket.join(streamId);
-      console.log(`Client ${socket.id} joined stream ${streamId}`);
-
-      try {
-        const stream = await Stream.findById(streamId);
-        if (stream) {
-          getOrCreateStream(streamId, stream.url, io);
-        }
-      } catch (error) {
-        console.error("Error joining stream:", error);
+    socket.on("joinStream", ({ id, url }) => {
+      socket.join(id);
+      if (!activeStreams.has(id)) {
+        const ffmpegProcess = startStreaming(url, io, id);
+        activeStreams.set(id, ffmpegProcess);
       }
     });
 
-    socket.on("pause", (streamId) => {
-      pauseStream(streamId);
+    socket.on("pauseStream", (id) => {
+      if (activeStreams.has(id)) {
+        activeStreams.get(id).kill("SIGSTOP");
+      }
     });
 
-    socket.on("resume", (streamId) => {
-      const stream = Stream.findById(streamId);
-      if (stream) {
-        resumeStream(streamId, stream.url, io);
+    socket.on("resumeStream", (id) => {
+      if (activeStreams.has(id)) {
+        activeStreams.get(id).kill("SIGCONT");
+      }
+    });
+
+    socket.on("leaveStream", (id) => {
+      socket.leave(id);
+    });
+
+    socket.on("removeStream", (id) => {
+      if (activeStreams.has(id)) {
+        activeStreams.get(id).kill();
+        activeStreams.delete(id);
       }
     });
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);
     });
-
-    socket.on("leave", (streamId) => {
-      socket.leave(streamId);
-      const room = io.sockets.adapter.rooms.get(streamId);
-      if (!room || room.size === 0) {
-        stopStream(streamId);
-      }
-    });
   });
-};
+}
+
+module.exports = streamSocket;
